@@ -1,0 +1,8 @@
+.pio/
+.vscode/
+sdkconfig
+sdkconfig.old
+sdkconfig.esp32dev
+sdkconfig.az-delivery-devkit-v4
+*.o
+*.a
