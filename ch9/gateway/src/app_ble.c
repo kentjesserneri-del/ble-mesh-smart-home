@@ -114,7 +114,7 @@ void init_ble(appble_attn_cbs_t cbs)
         return;
     }
 
-    appble_get_dev_uuid(dev_uuid);
+    appble_get_dev_uid(dev_uuid);
 
     esp_ble_mesh_register_prov_callback(appble_provisioning_handler);
     esp_ble_mesh_register_config_server_callback(appble_config_handler);
