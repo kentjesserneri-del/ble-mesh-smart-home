@@ -8,3 +8,7 @@ tmp/
 .pio/
 .vscode/
 code/ch5/ota_update_ex/server/
+sdkconfig
+sdkconfig.old
+sdkconfig.esp32dev
+sdkconfig.az-delivery-devkit-v4
