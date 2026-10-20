@@ -1,4 +1,3 @@
-
 #include "app_ble.h"
 
 #include "esp_log.h"
@@ -12,6 +11,7 @@
 #include "esp_ble_mesh_config_model_api.h"
 #include "esp_ble_mesh_generic_model_api.h"
 #include "esp_ble_mesh_local_data_operation_api.h"
+#include "esp_ble_mesh_health_model_api.h"
 
 #define TAG "app.ble"
 
@@ -42,7 +42,6 @@ static esp_ble_mesh_gen_onoff_srv_t onoff_server_0 = {
 
 ESP_BLE_MESH_MODEL_PUB_DEFINE(onoff_cli_pub, 2 + 1, ROLE_NODE);
 
-
 static uint8_t test_ids[] = {0, 1, 2};
 ESP_BLE_MESH_MODEL_PUB_DEFINE(health_pub_0, 10, ROLE_NODE);
 static esp_ble_mesh_health_srv_t health_server = {
@@ -52,7 +51,6 @@ static esp_ble_mesh_health_srv_t health_server = {
         .company_id = CID_ESP,
     },
 };
-
 
 static esp_ble_mesh_model_t root_models[] = {
     ESP_BLE_MESH_MODEL_CFG_SRV(&config_server),
@@ -142,8 +140,8 @@ void init_ble(app_ble_cb_t callbacks)
     appble_attn_cbs_t attn_cbs = {cbs.attn_on, cbs.attn_off};
     appble_set_attn_cbs(attn_cbs);
 
-    if (nvs_flash_init() == ESP_ERR_NVS_NO_FREE_PAGES)
-    {
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ESP_ERROR_CHECK(nvs_flash_init());
     }
@@ -153,7 +151,7 @@ void init_ble(app_ble_cb_t callbacks)
         ESP_LOGE(TAG, "bluetooth_init failed");
         return;
     }
-    appble_get_dev_uuid(dev_uuid);
+    appble_get_dev_uid(dev_uuid);
 
     esp_ble_mesh_register_prov_callback(appble_provisioning_handler);
     esp_ble_mesh_register_config_server_callback(appble_config_handler);
@@ -172,4 +170,6 @@ void init_ble(app_ble_cb_t callbacks)
         ESP_LOGE(TAG, "Failed to enable mesh node");
         return;
     }
+
+    ESP_LOGI(TAG, "BLE Mesh node initialized");
 }

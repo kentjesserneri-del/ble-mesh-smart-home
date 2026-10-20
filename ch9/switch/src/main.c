@@ -1,7 +1,5 @@
-
 #include <stdio.h>
 #include <string.h>
-
 #include "esp_log.h"
 #include "app_ble.h"
 #include "app_sw.h"
@@ -13,6 +11,7 @@ static void attn_on(void)
 {
     appled_set(true);
 }
+
 static void attn_off(void)
 {
     appled_set(false);

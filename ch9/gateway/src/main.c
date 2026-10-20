@@ -35,12 +35,12 @@ void app_main(void)
     appled_init();
     appweb_init(appble_set_switch);
 
+    appble_attn_cbs_t cbs = {attn_on, attn_off};
+    init_ble(cbs);
+
     connect_wifi_params_t p = {
         .on_connected = wifi_connected,
         .on_failed = wifi_failed,
     };
     appip_connect_wifi(p);
-
-    appble_attn_cbs_t cbs = {attn_on, attn_off};
-    init_ble(cbs);
 }

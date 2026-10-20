@@ -1,13 +1,12 @@
-
-#ifndef app_sw_h_
-#define app_sw_h_
+#ifndef APP_SW_H
+#define APP_SW_H
 
 #include <stdbool.h>
 
-#define RELAY_PIN 4
+#define SWITCH_RELAY_PIN 4
 
 void init_hw(void);
-void switch_set(bool);
+void switch_set(bool on);
 bool switch_get(void);
 
 #endif
