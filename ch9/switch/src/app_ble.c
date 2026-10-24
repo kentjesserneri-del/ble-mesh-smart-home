@@ -82,6 +82,16 @@ static void set_switch_state(bool onoff)
     srv->state.onoff = onoff;
 }
 
+static void set_sensor_state(uint8_t sensor_state)
+{
+    /*
+     * The physical sensor reports 0 when its active condition is detected.
+     * Mesh Generic OnOff uses 1 for ON, so translate the sensor value before
+     * driving the relay.
+     */
+    set_switch_state(sensor_state == 0);
+}
+
 static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
                               esp_ble_mesh_generic_server_cb_param_t *param)
 {
@@ -126,7 +136,7 @@ static void generic_client_cb(esp_ble_mesh_generic_client_cb_event_t event,
     case ESP_BLE_MESH_GENERIC_CLIENT_PUBLISH_EVT:
     {
         ESP_LOGI(TAG, "sensor state changed (%d)", param->status_cb.onoff_status.present_onoff);
-        set_switch_state(param->status_cb.onoff_status.present_onoff);
+        set_sensor_state(param->status_cb.onoff_status.present_onoff);
         break;
     }
     default:

@@ -1,66 +1,61 @@
-
 #include "app_sensor.h"
-
-#include <stdio.h>
-#include <string.h>
+#include "esp_log.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_log.h"
 
+#define TAG "sensor"
 
-bool light_level_low;
-static light_changed_f light_changed_cb;
+static light_changed_f s_cb = NULL;
+static bool s_last_low = false;
 
-static tsl2561_t light_sensor;
-
-#define TAG "app.sensor"
-
-static void read_light(void *arg)
+static void sensor_task(void *arg)
 {
-    uint32_t lux;
-    while (1)
-    {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        if (tsl2561_read_lux(&light_sensor, &lux) == ESP_OK)
-        {
-            ESP_LOGI(TAG, "Lux: %u\n", lux);
-            if (lux < LIGHT_THRESHOLD && !light_level_low)
-            {
-                light_level_low = true;
-                if (light_changed_cb != NULL)
-                {
-                    light_changed_cb(light_level_low);
-                }
-            }
-            else if (lux > LIGHT_THRESHOLD && light_level_low)
-            {
-                light_level_low = false;
-                if (light_changed_cb != NULL)
-                {
-                    light_changed_cb(light_level_low);
-                }
+    int stable = -1;
+    int agree_count = 0;
+
+    while (1) {
+        int level = gpio_get_level(LIGHT_DO_PIN);
+
+        if (level == stable) {
+            agree_count = 0;
+        } else {
+            agree_count++;
+            if (agree_count >= 3) {
+                stable = level;
+                agree_count = 0;
+
+                bool low = (stable == LIGHT_DARK_LEVEL);
+                s_last_low = low;
+                ESP_LOGI(TAG, "light change: DO=%d low=%d", stable, low);
+
+                if (s_cb) s_cb(low);
             }
         }
+
+        vTaskDelay(pdMS_TO_TICKS(LIGHT_SAMPLE_MS));
     }
 }
 
-void init_hw(light_changed_f f)
+void init_hw(light_changed_f cb)
 {
-    light_changed_cb = f;
-    light_level_low = false;
+    s_cb = cb;
 
-    i2cdev_init();
+    gpio_config_t io = {
+        .pin_bit_mask = (1ULL << LIGHT_DO_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io);
 
-    memset(&light_sensor, 0, sizeof(tsl2561_t));
-    light_sensor.i2c_dev.timeout_ticks = 0xffff / portTICK_PERIOD_MS;
-
-    tsl2561_init_desc(&light_sensor, LIGHT_ADDR, 0, LIGHT_SDA, LIGHT_SCL);
-    tsl2561_init(&light_sensor);
-
-    xTaskCreate(read_light, "light", 3 * configMINIMAL_STACK_SIZE, NULL, 5, NULL);
+    xTaskCreate(sensor_task, "sensor_task", 4096, NULL, 5, NULL);
+    ESP_LOGI(TAG, "DO photoresistor on GPIO%d (dark level=%d -> ON)",
+             LIGHT_DO_PIN, LIGHT_DARK_LEVEL);
 }
 
 bool is_light_low(void)
 {
-    return light_level_low;
+    return s_last_low;
 }

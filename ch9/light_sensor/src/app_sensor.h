@@ -1,17 +1,15 @@
+#ifndef APP_SENSOR_H
+#define APP_SENSOR_H
 
-#ifndef app_sensor_h_
-#define app_sensor_h_
+#include <stdbool.h>
 
-#include "tsl2561.h"
-
-#define LIGHT_THRESHOLD 30
-#define LIGHT_SDA 21
-#define LIGHT_SCL 22
-#define LIGHT_ADDR TSL2561_I2C_ADDR_FLOAT
-
+#define LIGHT_DO_PIN     34
+#define LIGHT_SAMPLE_MS  1000
+#define LIGHT_DARK_LEVEL 0
 
 typedef void (*light_changed_f)(bool);
-void init_hw(light_changed_f);
+
+void init_hw(light_changed_f cb);
 bool is_light_low(void);
 
 #endif

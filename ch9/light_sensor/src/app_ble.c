@@ -1,4 +1,3 @@
-
 #include "app_ble.h"
 
 #include "esp_log.h"
@@ -13,12 +12,17 @@
 #include "esp_ble_mesh_generic_model_api.h"
 #include "esp_ble_mesh_local_data_operation_api.h"
 #include "esp_ble_mesh_health_model_api.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #define TAG "app.ble"
 
 #define CID_ESP 0x02E5
 
 static uint8_t dev_uuid[16] = {0xdd, 0xdd};
+static bool pending_state_valid;
+static bool pending_state;
+static TaskHandle_t publish_task_handle;
 
 static esp_ble_mesh_cfg_srv_t config_server = {
     .relay = ESP_BLE_MESH_RELAY_DISABLED,
@@ -86,7 +90,8 @@ static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
             if (ctx->recv_op == ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_SET)
             {
                 esp_ble_mesh_server_model_send_msg(model, ctx,
-                                                   ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS, sizeof(srv->state.onoff), &srv->state.onoff);
+                                                   ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS,
+                                                   sizeof(srv->state.onoff), &srv->state.onoff);
             }
         }
         break;
@@ -96,22 +101,69 @@ static void generic_server_cb(esp_ble_mesh_generic_server_cb_event_t event,
     }
 }
 
-void appble_update_state(bool onoff)
+static esp_err_t publish_state(void)
 {
     esp_ble_mesh_model_t *model = &root_models[1];
     esp_ble_mesh_gen_onoff_srv_t *srv = &onoff_server_0;
 
-    srv->state.onoff = onoff;
-    esp_ble_mesh_model_publish(model, ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS,
-                               sizeof(srv->state.onoff), &srv->state.onoff, ROLE_NODE);
+    if (!esp_ble_mesh_node_is_provisioned() ||
+        model->pub == NULL || model->pub->publish_addr == 0x0000) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t err = esp_ble_mesh_model_publish(model,
+                                               ESP_BLE_MESH_MODEL_OP_GEN_ONOFF_STATUS,
+                                               sizeof(srv->state.onoff),
+                                               &srv->state.onoff, ROLE_NODE);
+    if (err == ESP_OK) {
+        pending_state_valid = false;
+    } else {
+        ESP_LOGE(TAG, "Failed to publish light state: %s", esp_err_to_name(err));
+    }
+    return err;
 }
 
+static void publish_pending_state_task(void *arg)
+{
+    while (pending_state_valid) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        if (!pending_state_valid) {
+            break;
+        }
+
+        onoff_server_0.state.onoff = pending_state;
+        if (publish_state() == ESP_OK) {
+            ESP_LOGI(TAG, "Published pending light state: %d", pending_state);
+        }
+    }
+
+    publish_task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
+void appble_update_state(bool onoff)
+{
+    onoff_server_0.state.onoff = onoff;
+    pending_state = onoff;
+    pending_state_valid = true;
+
+    if (publish_state() == ESP_OK) {
+        return;
+    }
+
+    ESP_LOGW(TAG, "Light state deferred until Mesh is provisioned and configured");
+    if (publish_task_handle == NULL) {
+        xTaskCreate(publish_pending_state_task, "mesh_publish",
+                    3072, NULL, 4, &publish_task_handle);
+    }
+}
 
 void init_ble(appble_attn_cbs_t cbs)
 {
     appble_set_attn_cbs(cbs);
-    if (nvs_flash_init() == ESP_ERR_NVS_NO_FREE_PAGES)
-    {
+
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
         ESP_ERROR_CHECK(nvs_flash_init());
     }
@@ -121,7 +173,8 @@ void init_ble(appble_attn_cbs_t cbs)
         ESP_LOGE(TAG, "bluetooth_init failed");
         return;
     }
-    appble_get_dev_uuid(dev_uuid);
+
+    appble_get_dev_uid(dev_uuid);
 
     esp_ble_mesh_register_prov_callback(appble_provisioning_handler);
     esp_ble_mesh_register_config_server_callback(appble_config_handler);
@@ -138,4 +191,6 @@ void init_ble(appble_attn_cbs_t cbs)
         ESP_LOGE(TAG, "Failed to enable mesh node");
         return;
     }
+
+    ESP_LOGI(TAG, "BLE Mesh node initialized");
 }
